@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -21,16 +22,18 @@ type parsedData struct {
 	InsideHumidity     float32
 }
 
+// parses data from array and rounds it to two decimals accuracy
 func parseResults(results []uint8) (float32, float32) {
 	temperature := math.Floor((float64(results[1])/10.0)*100) / 100
 	humidity := math.Floor((float64(results[3])/10.0)*100) / 100
 	return float32(temperature), float32(humidity)
 }
 
-func readData(h *modbus.RTUClientHandler, data *parsedData) {
+// read dato from 2 XT-MD02 temperature sensors
+func readData(handler *modbus.RTUClientHandler, data *parsedData) {
 	for i := 1; i <= 2; i++ {
-		h.SlaveId = byte(i)
-		client := modbus.NewClient(h)
+		handler.SlaveId = byte(i)
+		client := modbus.NewClient(handler)
 
 		results, err := client.ReadInputRegisters(1, 2)
 
@@ -38,19 +41,22 @@ func readData(h *modbus.RTUClientHandler, data *parsedData) {
 			fmt.Println("Reading error: ", err)
 		}
 
-		t, h := parseResults(results)
+		temperature, humidity := parseResults(results)
 
 		if i == 1 {
-			data.OutsideTemperature = t
-			data.OutsideHumidity = h
+			data.OutsideTemperature = temperature
+			data.OutsideHumidity = humidity
 		} else {
-			data.InsideTemperature = t
-			data.InsideHumidity = h
+			data.InsideTemperature = temperature
+			data.InsideHumidity = humidity
 		}
 	}
 }
 
-func sendData(data []byte) {
+// sends measurement data to backend.
+// input: data wich will be send to backend.
+// output: http staus code or error code.
+func sendData(data []byte) (string, error) {
 
 	resp, err := http.Post("http://localhost:8080/temperatures", "application/json", bytes.NewBuffer(data))
 
@@ -62,12 +68,19 @@ func sendData(data []byte) {
 
 	json.NewDecoder(resp.Body).Decode(&res)
 
-	fmt.Println(resp.Status)
+	if resp.Status != "201" {
+		return "", errors.New("Networking error")
+	}
+
+	return "", nil
 }
 
 func main() {
 
+	// laod enviroment variables
 	godotenv.Load(".env")
+
+	//Configurate modbus connection
 	handler := modbus.NewRTUClientHandler("COM2")
 	handler.BaudRate = 9600
 	handler.DataBits = 8
@@ -83,17 +96,31 @@ func main() {
 
 	defer handler.Close()
 
-	var data = parsedData{
+	// create struct where data will be stored
+	var measurementData = parsedData{
 		Key: os.Getenv("Key"),
 	}
 
-	readData(handler, &data)
+	// this loop runs
+	for ok := true; ok; ok = true {
 
-	j, err := json.Marshal(data)
+		readData(handler, &measurementData)
 
-	if err != nil {
-		fmt.Println(err)
+		json, err := json.Marshal(measurementData)
+
+		fmt.Println(measurementData)
+
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		_, NetworkError := sendData(json)
+
+		if NetworkError != nil {
+			fmt.Println("Error sending data: ", NetworkError)
+		}
+
+		// measurements are done in one hour intervals
+		time.Sleep(1 * time.Hour)
 	}
-
-	sendData(j)
 }
