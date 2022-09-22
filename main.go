@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"os"
 	"time"
@@ -24,9 +23,7 @@ type parsedData struct {
 
 // parses data from array and rounds it to two decimals accuracy
 func parseResults(results []uint8) (float32, float32) {
-	temperature := math.Floor((float64(results[1])/10.0)*100) / 100
-	humidity := math.Floor((float64(results[3])/10.0)*100) / 100
-	return float32(temperature), float32(humidity)
+	return float32(results[1]), float32(results[3])
 }
 
 // read dato from 2 XT-MD02 temperature sensors
