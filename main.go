@@ -58,7 +58,7 @@ func readData(handler *modbus.RTUClientHandler, data *parsedData) {
 // output: http staus code or error code.
 func sendData(data []byte) (string, error) {
 
-	resp, err := http.Post("http://localhost:8080/temperatures", "application/json", bytes.NewBuffer(data))
+	resp, err := http.Post(os.Getenv("ServerUrl"), "application/json", bytes.NewBuffer(data))
 
 	if err != nil {
 		fmt.Println(err)
